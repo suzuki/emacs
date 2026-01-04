@@ -48,6 +48,7 @@ struct json_configuration
   enum json_array_type array_type;
   Lisp_Object null_object;
   Lisp_Object false_object;
+  Lisp_Object empty_object;
 };
 
 static void
@@ -88,11 +89,14 @@ json_parse_args (ptrdiff_t nargs, Lisp_Object *args,
 	conf->null_object = value;
       else if (EQ (key, QCfalse_object))
 	conf->false_object = value;
+      else if (parse_object_types && EQ (key, QCempty_object))
+	conf->empty_object = value;
       else if (parse_object_types)
-	wrong_choice (list4 (QCobject_type,
+	wrong_choice (list5 (QCobject_type,
 			     QCarray_type,
 			     QCnull_object,
-			     QCfalse_object),
+			     QCfalse_object,
+			     QCempty_object),
 		      value);
       else
 	wrong_choice (list2 (QCnull_object,
@@ -1560,6 +1564,9 @@ json_parse_object (struct json_parser *parser)
       }
     case json_object_alist:
     case json_object_plist:
+      /* For empty objects, use empty_object value if specified.  */
+      if (NILP (result) && !BASE_EQ (parser->conf.empty_object, Qunbound))
+	result = parser->conf.empty_object;
       break;
     default:
       emacs_abort ();
@@ -1714,6 +1721,12 @@ The arguments ARGS are a list of keyword/argument pairs:
 
 :false-object OBJ -- use OBJ to represent a JSON false value.
   It defaults to `:false'.
+
+:empty-object OBJ -- use OBJ to represent an empty JSON object.
+  This only affects parsing when `:object-type' is `alist' or `plist'.
+  By default, an empty JSON object is represented as nil, which is
+  indistinguishable from an empty alist or plist.  Specifying this
+  option allows distinguishing empty objects from nil.
 usage: (json-parse-string STRING &rest ARGS) */)
 (ptrdiff_t nargs, Lisp_Object *args)
 {
@@ -1722,7 +1735,7 @@ usage: (json-parse-string STRING &rest ARGS) */)
   Lisp_Object string = args[0];
   CHECK_STRING (string);
   struct json_configuration conf
-    = { json_object_hashtable, json_array_array, QCnull, QCfalse };
+    = { json_object_hashtable, json_array_array, QCnull, QCfalse, Qunbound };
   json_parse_args (nargs - 1, args + 1, &conf, true);
 
   struct json_parser p;
@@ -1786,13 +1799,19 @@ The arguments ARGS are a list of keyword/argument pairs:
 
 :false-object OBJ -- use OBJ to represent a JSON false value.
   It defaults to `:false'.
+
+:empty-object OBJ -- use OBJ to represent an empty JSON object.
+  This only affects parsing when `:object-type' is `alist' or `plist'.
+  By default, an empty JSON object is represented as nil, which is
+  indistinguishable from an empty alist or plist.  Specifying this
+  option allows distinguishing empty objects from nil.
 usage: (json-parse-buffer &rest args) */)
 (ptrdiff_t nargs, Lisp_Object *args)
 {
   specpdl_ref count = SPECPDL_INDEX ();
 
   struct json_configuration conf
-    = { json_object_hashtable, json_array_array, QCnull, QCfalse };
+    = { json_object_hashtable, json_array_array, QCnull, QCfalse, Qunbound };
   json_parse_args (nargs, args, &conf, true);
 
   struct json_parser p;
@@ -1866,6 +1885,7 @@ syms_of_json (void)
   DEFSYM (QCarray_type, ":array-type");
   DEFSYM (QCnull_object, ":null-object");
   DEFSYM (QCfalse_object, ":false-object");
+  DEFSYM (QCempty_object, ":empty-object");
   DEFSYM (Qalist, "alist");
   DEFSYM (Qplist, "plist");
   DEFSYM (Qarray, "array");
